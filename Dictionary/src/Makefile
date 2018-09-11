@@ -13,5 +13,5 @@ run: Dictionary.jar
 	java -jar Dictionary.jar
 
 clean:
-	find -iname '*.class' -delete
+	find . -iname '*.class' -delete
 	-rm -rf  Dictionary.jar
