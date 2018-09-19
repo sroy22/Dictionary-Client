@@ -6,6 +6,7 @@ import ca.ubc.cs317.dict.model.Definition;
 import ca.ubc.cs317.dict.model.MatchingStrategy;
 
 import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.*;
@@ -34,6 +35,18 @@ public class DictionaryConnection {
     public DictionaryConnection(String host, int port) throws DictConnectionException {
 
         // TODO Add your code here
+
+        try {
+            socket = new Socket(host, port);
+            input = new BufferedReader( new InputStreamReader(socket.getInputStream()));
+            output = new PrintWriter(socket.getOutputStream(), true);
+
+            String welcomeMessage = input.readLine(); // receive incoming message
+            String welcomeMessageStatus = welcomeMessage.split(" ")[0]; // TODO close connection and throw error if not status 220
+            System.out.println(welcomeMessageStatus);
+        } catch (Exception e) {
+            throw new DictConnectionException(e);
+        }
     }
 
     /** Establishes a new connection with a DICT server using an explicit host, with the default DICT port number, and
@@ -54,6 +67,14 @@ public class DictionaryConnection {
     public synchronized void close() {
 
         // TODO Add your code here
+
+        try {
+            output.println("quit");
+            System.out.println(input.readLine()); // bye message
+            socket.close();
+        } catch (Exception e) {
+            // do nothing
+        }
     }
 
     /** Requests and retrieves all definitions for a specific word.
@@ -106,6 +127,22 @@ public class DictionaryConnection {
 
         // TODO Add your code here
 
+        output.println("show db");
+        System.out.println("\nListing all databases... \n");
+        String fromServer;
+        try {
+            while ((fromServer = input.readLine()) != null) {
+                if (fromServer.contains(
+                        "\"")) { // all dictionaries have quotes for description
+                    String databaseName = fromServer.split(" ")[0];
+                    String databaseDescription = fromServer.split("\"")[1];
+                    databaseMap.put(databaseName, new Database(databaseName, databaseDescription));
+                }
+                System.out.println("Server: " + fromServer);
+            }
+        } catch (Exception e) {
+            throw new DictConnectionException(e);
+        }
         return databaseMap.values();
     }
 
@@ -118,6 +155,21 @@ public class DictionaryConnection {
         Set<MatchingStrategy> set = new LinkedHashSet<>();
 
         // TODO Add your code here
+        output.println("show strat");
+        System.out.println("\nListing all strategies... \n");
+        String fromServer;
+        try {
+            while ((fromServer = input.readLine()) != null) {
+                if (fromServer.contains("\"")) { // all strategies have quotes for description
+                    String matchingStrategyName = fromServer.split(" ")[0];
+                    String matchingStrategyDescription = fromServer.split("\"")[1];
+                    set.add(new MatchingStrategy(matchingStrategyName, matchingStrategyDescription));
+                }
+                System.out.println("Server: " + fromServer);
+            }
+        } catch (Exception e) {
+            throw new DictConnectionException(e);
+        }
 
         return set;
     }
