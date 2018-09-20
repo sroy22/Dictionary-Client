@@ -24,62 +24,61 @@ public class DictionaryConnection {
 
     private Map<String, Database> databaseMap = new LinkedHashMap<String, Database>();
 
-    /** Establishes a new connection with a DICT server using an explicit host and port number, and handles initial
+    /**
+     * Establishes a new connection with a DICT server using an explicit host and port number, and handles initial
      * welcome messages.
      *
      * @param host Name of the host where the DICT server is running
      * @param port Port number used by the DICT server
      * @throws DictConnectionException If the host does not exist, the connection can't be established, or the messages
-     * don't match their expected value.
+     *                                 don't match their expected value.
      */
     public DictionaryConnection(String host, int port) throws DictConnectionException {
 
-        // TODO Add your code here
-
         try {
             socket = new Socket(host, port);
-            input = new BufferedReader( new InputStreamReader(socket.getInputStream()));
+            input = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             output = new PrintWriter(socket.getOutputStream(), true);
 
             String welcomeMessage = input.readLine(); // receive incoming message
             String welcomeMessageStatus = welcomeMessage.split(" ")[0]; // TODO close connection and throw error if not status 220
             System.out.println(welcomeMessageStatus);
+
         } catch (Exception e) {
             throw new DictConnectionException(e);
         }
     }
 
-    /** Establishes a new connection with a DICT server using an explicit host, with the default DICT port number, and
+    /**
+     * Establishes a new connection with a DICT server using an explicit host, with the default DICT port number, and
      * handles initial welcome messages.
      *
      * @param host Name of the host where the DICT server is running
      * @throws DictConnectionException If the host does not exist, the connection can't be established, or the messages
-     * don't match their expected value.
+     *                                 don't match their expected value.
      */
     public DictionaryConnection(String host) throws DictConnectionException {
         this(host, DEFAULT_PORT);
     }
 
-    /** Sends the final QUIT message and closes the connection with the server. This function ignores any exception that
+    /**
+     * Sends the final QUIT message and closes the connection with the server. This function ignores any exception that
      * may happen while sending the message, receiving its reply, or closing the connection.
-     *
      */
     public synchronized void close() {
-
-        // TODO Add your code here
 
         try {
             output.println("quit");
             System.out.println(input.readLine()); // bye message
             socket.close();
         } catch (Exception e) {
-            // do nothing
         }
     }
 
-    /** Requests and retrieves all definitions for a specific word.
+    /**
+     * Requests and retrieves all definitions for a specific word.
      *
-     * @param word The word whose definition is to be retrieved.
+     * @param word     The word whose definition is to be retrieved.
      * @param database The database to be used to retrieve the definition. A special database may be specified,
      *                 indicating either that all regular databases should be used (database name '*'), or that only
      *                 definitions in the first database that has a definition for the word should be used
@@ -91,12 +90,40 @@ public class DictionaryConnection {
         Collection<Definition> set = new ArrayList<>();
         getDatabaseList(); // Ensure the list of databases has been populated
 
-        // TODO Add your code here
+        try {
+            output.println("define " + database.getName() + " " + word);
+            String fromServer;
+            Definition definitionToAdd = new Definition("", new Database("", "")); // empty Definition
+            String definition = "";
+            while ((fromServer = input.readLine()) != null) {
+                System.out.println("Server: " + fromServer);
+                if (fromServer.contains("151")) {
+                    String serverResponse[] = fromServer.split("\""); // split 151 "apple" database "database description"
+                    String wordSearched = serverResponse[1]; // get apple from "apple"
+                    String databaseSearched = serverResponse[2].replaceAll(" ", ""); // get rid of space beside database name
+                    String databaseDescription = serverResponse[3];
+                    definitionToAdd = new Definition(wordSearched, new Database(databaseSearched, databaseDescription));
+                } else if (fromServer.contains("250")) {
+                    break;
+                } else if (fromServer.equals(".")) {
+                    definitionToAdd.setDefinition(definition);
+                    System.out.println(definition);
+                    set.add(definitionToAdd);
+                } else if (fromServer.contains("150")) { // empty for now; TODO change all if statements into switch
+                                                                        // TODO     cases in another handle method
+                } else {
+                    definition = definition.concat(fromServer + "\n");
+                }
+            }
+        } catch (Exception e) {
+            throw new DictConnectionException(e);
+        }
 
         return set;
     }
 
-    /** Requests and retrieves a list of matches for a specific word pattern.
+    /**
+     * Requests and retrieves a list of matches for a specific word pattern.
      *
      * @param word     The word whose definition is to be retrieved.
      * @param strategy The strategy to be used to retrieve the list of matches (e.g., prefix, exact).
@@ -109,12 +136,46 @@ public class DictionaryConnection {
     public synchronized Set<String> getMatchList(String word, MatchingStrategy strategy, Database database) throws DictConnectionException {
         Set<String> set = new LinkedHashSet<>();
 
-        // TODO Add your code here
+        try {
+            output.println("match " + database.getName() + " " + strategy.getName() + " " + word);
+            String fromServer;
+            while ((fromServer = input.readLine()) != null) {
+                if (fromServer.contains("\"")) { // all match have quotes for description
+                    String matchActual = fromServer.split("\"")[1];
+                    set.add(matchActual);
+                }
+                System.out.println("Server: " + fromServer);
+                if (fromServer.contains("250")) {
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            throw new DictConnectionException(e);
+        }
 
         return set;
     }
 
-    /** Requests and retrieves a list of all valid databases used in the server. In addition to returning the list, this
+    // TODO finish implementing
+    private void handleStatusCodes(int statusCode) throws Exception {
+        switch (statusCode) {
+            case 550:
+                break;
+            case 551:
+                break;
+            case 552:
+                break;
+            case 152:
+                break;
+            case 250:
+                break;
+            default:
+                throw new DictConnectionException();
+        }
+    }
+
+    /**
+     * Requests and retrieves a list of all valid databases used in the server. In addition to returning the list, this
      * method also updates the local databaseMap field, which contains a mapping from database name to Database object,
      * to be used by other methods (e.g., getDefinitionMap) to return a Database object based on the name.
      *
@@ -125,20 +186,20 @@ public class DictionaryConnection {
 
         if (!databaseMap.isEmpty()) return databaseMap.values();
 
-        // TODO Add your code here
-
         output.println("show db");
         System.out.println("\nListing all databases... \n");
         String fromServer;
         try {
             while ((fromServer = input.readLine()) != null) {
-                if (fromServer.contains(
-                        "\"")) { // all dictionaries have quotes for description
+                if (fromServer.contains("\"")) { // all dictionaries have quotes for description
                     String databaseName = fromServer.split(" ")[0];
                     String databaseDescription = fromServer.split("\"")[1];
                     databaseMap.put(databaseName, new Database(databaseName, databaseDescription));
                 }
                 System.out.println("Server: " + fromServer);
+                if (fromServer.contains("250")) {
+                    break;
+                }
             }
         } catch (Exception e) {
             throw new DictConnectionException(e);
@@ -146,7 +207,8 @@ public class DictionaryConnection {
         return databaseMap.values();
     }
 
-    /** Requests and retrieves a list of all valid matching strategies supported by the server.
+    /**
+     * Requests and retrieves a list of all valid matching strategies supported by the server.
      *
      * @return A set of MatchingStrategy objects supported by the server.
      * @throws DictConnectionException If the connection was interrupted or the messages don't match their expected value.
@@ -154,7 +216,6 @@ public class DictionaryConnection {
     public synchronized Set<MatchingStrategy> getStrategyList() throws DictConnectionException {
         Set<MatchingStrategy> set = new LinkedHashSet<>();
 
-        // TODO Add your code here
         output.println("show strat");
         System.out.println("\nListing all strategies... \n");
         String fromServer;
@@ -166,6 +227,9 @@ public class DictionaryConnection {
                     set.add(new MatchingStrategy(matchingStrategyName, matchingStrategyDescription));
                 }
                 System.out.println("Server: " + fromServer);
+                if (fromServer.contains("250")) {
+                    break;
+                }
             }
         } catch (Exception e) {
             throw new DictConnectionException(e);
@@ -173,5 +237,4 @@ public class DictionaryConnection {
 
         return set;
     }
-
 }
