@@ -94,7 +94,9 @@ public class DictionaryConnection {
 
         try {
             Status definitionRetrievedStatus = Status.readStatus(input);
-            handleStatus(definitionRetrievedStatus); // TODO no match status
+            if (!handleStatus(definitionRetrievedStatus)) {
+                return set;
+            }
 
             String numDefinitionsRetrievedString = definitionRetrievedStatus.getDetails().split(" ")[0];
             int numDefinitionsRetrieved = Integer.parseInt(numDefinitionsRetrievedString);
@@ -120,6 +122,9 @@ public class DictionaryConnection {
                     }
                 }
             }
+
+            Status completionStatus = Status.readStatus(input);
+            handleStatus(completionStatus);
         } catch (Exception e) {
             throw new DictConnectionException(e);
         }
@@ -145,7 +150,9 @@ public class DictionaryConnection {
 
         try {
             Status matchStatus = Status.readStatus(input);
-            handleStatus(matchStatus); // TODO no match status
+            if (!handleStatus(matchStatus)) {
+                return set;
+            }
 
             String fromServer;
             while ((fromServer = input.readLine()) != null) {
@@ -159,7 +166,8 @@ public class DictionaryConnection {
                 }
             }
 
-            handleStatus(Status.readStatus(input));
+            Status completionStatus = Status.readStatus(input);
+            handleStatus(completionStatus);
         } catch (Exception e) {
             throw new DictConnectionException(e);
         }
@@ -183,7 +191,9 @@ public class DictionaryConnection {
 
         try {
             Status databaseStatus = Status.readStatus(input);
-            handleStatus(databaseStatus); // TODO no match status
+            if (!handleStatus(databaseStatus)) {
+                return databaseMap.values();
+            }
 
             String fromServer;
             while ((fromServer = input.readLine()) != null) {
@@ -198,7 +208,8 @@ public class DictionaryConnection {
                 }
             }
 
-            handleStatus(Status.readStatus(input));
+            Status completionStatus = Status.readStatus(input);
+            handleStatus(completionStatus);
         } catch (Exception e) {
             throw new DictConnectionException(e);
         }
@@ -219,7 +230,9 @@ public class DictionaryConnection {
 
         try {
             Status strategyStatus = Status.readStatus(input);
-            handleStatus(strategyStatus); // TODO no match status
+            if (!handleStatus(strategyStatus)) {
+                return set;
+            }
 
             String fromServer;
             while ((fromServer = input.readLine()) != null) {
@@ -234,7 +247,8 @@ public class DictionaryConnection {
                 }
             }
 
-            handleStatus(Status.readStatus(input));
+            Status completionStatus = Status.readStatus(input);
+            handleStatus(completionStatus);
         } catch (Exception e) {
             throw new DictConnectionException(e);
         }
@@ -249,7 +263,14 @@ public class DictionaryConnection {
     }
 
     // TODO finish implementing
-    private void handleStatus(Status status) throws Exception {
+
+    /**
+     *
+     * @param status
+     * @return true if need to parse server response, false otherwise
+     * @throws Exception
+     */
+    private boolean handleStatus(Status status) throws Exception {
         System.out.println(status.getStatusCode() + " " + status.getDetails());
         switch (status.getStatusType()) {
             case 1:
@@ -278,6 +299,10 @@ public class DictionaryConnection {
                         break;
                     case 503:
                         break;
+                    case 552:
+                    case 554:
+                    case 555:
+                        return false;
                     default:
                         throw new DictConnectionException();
                 }
@@ -285,20 +310,12 @@ public class DictionaryConnection {
             default:
                 throw new DictConnectionException("Invalid status type");
 //            case 220:
-//                System.out.println(status.getDetails());
-//                break;
 //            case 550:
-//                break;
 //            case 551:
-//                break;
 //            case 552:
-//                break;
 //            case 152:
-//                break;
 //            case 250:
-//                break;
-//            default:
-//                throw new DictConnectionException();
         }
+        return true;
     }
 }
