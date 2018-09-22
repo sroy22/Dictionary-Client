@@ -4,6 +4,7 @@ import ca.ubc.cs317.dict.exception.DictConnectionException;
 import ca.ubc.cs317.dict.model.Database;
 import ca.ubc.cs317.dict.model.Definition;
 import ca.ubc.cs317.dict.model.MatchingStrategy;
+import ca.ubc.cs317.dict.util.DictStringParser;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -40,10 +41,8 @@ public class DictionaryConnection {
             input = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             output = new PrintWriter(socket.getOutputStream(), true);
 
-            String welcomeMessage = input.readLine(); // receive incoming message
-            String welcomeMessageStatus = welcomeMessage.split(" ")[0]; // TODO close connection and throw error if not status 220
-            System.out.println(welcomeMessageStatus);
-
+            Status welcomeStatus = Status.readStatus(input);
+            handleStatus(welcomeStatus);
         } catch (Exception e) {
             throw new DictConnectionException(e);
         }
@@ -66,12 +65,12 @@ public class DictionaryConnection {
      * may happen while sending the message, receiving its reply, or closing the connection.
      */
     public synchronized void close() {
+        output.println("quit");
 
         try {
-            output.println("quit");
-            System.out.println(input.readLine()); // bye message
             socket.close();
         } catch (Exception e) {
+            // ignore all exceptions
         }
     }
 
@@ -90,29 +89,35 @@ public class DictionaryConnection {
         Collection<Definition> set = new ArrayList<>();
         getDatabaseList(); // Ensure the list of databases has been populated
 
+        output.println("define " + database.getName() + " " + formatWord(word));
+        Definition definitionToAdd;
+
         try {
-            output.println("define " + database.getName() + " " + word);
-            String fromServer;
-            Definition definitionToAdd = new Definition("", new Database("", "")); // empty Definition
-            String definition = "";
-            while ((fromServer = input.readLine()) != null) {
-                System.out.println("Server: " + fromServer);
-                if (fromServer.contains("151")) {
-                    String serverResponse[] = fromServer.split("\""); // split 151 "apple" database "database description"
-                    String wordSearched = serverResponse[1]; // get apple from "apple"
-                    String databaseSearched = serverResponse[2].replaceAll(" ", ""); // get rid of space beside database name
-                    String databaseDescription = serverResponse[3];
-                    definitionToAdd = new Definition(wordSearched, new Database(databaseSearched, databaseDescription));
-                } else if (fromServer.contains("250")) {
-                    break;
-                } else if (fromServer.equals(".")) {
-                    definitionToAdd.setDefinition(definition);
-                    System.out.println(definition);
-                    set.add(definitionToAdd);
-                } else if (fromServer.contains("150")) { // empty for now; TODO change all if statements into switch
-                                                                        // TODO     cases in another handle method
-                } else {
-                    definition = definition.concat(fromServer + "\n");
+            Status definitionRetrievedStatus = Status.readStatus(input);
+            handleStatus(definitionRetrievedStatus); // TODO no match status
+
+            String numDefinitionsRetrievedString = definitionRetrievedStatus.getDetails().split(" ")[0];
+            int numDefinitionsRetrieved = Integer.parseInt(numDefinitionsRetrievedString);
+            for (int i = 0; i < numDefinitionsRetrieved; i++) {
+
+                Status definitionStatus = Status.readStatus(input); // read word and database
+                handleStatus(definitionStatus);
+
+                String[] parsedStrings = DictStringParser.splitAtoms(definitionStatus.getDetails()); // handle word/db
+                String wordToAdd = parsedStrings[0];
+                String databaseName = parsedStrings[1];
+                definitionToAdd = new Definition(wordToAdd, databaseMap.get(databaseName));
+
+                String fromServer; // read through actual definition
+                String definition = "";
+                while ((fromServer = input.readLine()) != null) {
+                    if (!fromServer.equals(".")) {
+                        definition = definition.concat(fromServer + "\n");
+                    } else {
+                        definitionToAdd.setDefinition(definition);
+                        set.add(definitionToAdd);
+                        break;
+                    }
                 }
             }
         } catch (Exception e) {
@@ -136,42 +141,30 @@ public class DictionaryConnection {
     public synchronized Set<String> getMatchList(String word, MatchingStrategy strategy, Database database) throws DictConnectionException {
         Set<String> set = new LinkedHashSet<>();
 
+        output.println("match " + database.getName() + " " + strategy.getName() + " " + formatWord(word));
+
         try {
-            output.println("match " + database.getName() + " " + strategy.getName() + " " + word);
+            Status matchStatus = Status.readStatus(input);
+            handleStatus(matchStatus); // TODO no match status
+
             String fromServer;
             while ((fromServer = input.readLine()) != null) {
-                if (fromServer.contains("\"")) { // all match have quotes for description
-                    String matchActual = fromServer.split("\"")[1];
-                    set.add(matchActual);
-                }
-                System.out.println("Server: " + fromServer);
-                if (fromServer.contains("250")) {
+                String[] parsedStrings = DictStringParser.splitAtoms(fromServer);
+
+                if (parsedStrings.length > 1) {
+                    String match = parsedStrings[1];
+                    set.add(match);
+                } else { // when . is encountered
                     break;
                 }
             }
+
+            handleStatus(Status.readStatus(input));
         } catch (Exception e) {
             throw new DictConnectionException(e);
         }
 
         return set;
-    }
-
-    // TODO finish implementing
-    private void handleStatusCodes(int statusCode) throws Exception {
-        switch (statusCode) {
-            case 550:
-                break;
-            case 551:
-                break;
-            case 552:
-                break;
-            case 152:
-                break;
-            case 250:
-                break;
-            default:
-                throw new DictConnectionException();
-        }
     }
 
     /**
@@ -187,23 +180,29 @@ public class DictionaryConnection {
         if (!databaseMap.isEmpty()) return databaseMap.values();
 
         output.println("show db");
-        System.out.println("\nListing all databases... \n");
-        String fromServer;
+
         try {
+            Status databaseStatus = Status.readStatus(input);
+            handleStatus(databaseStatus); // TODO no match status
+
+            String fromServer;
             while ((fromServer = input.readLine()) != null) {
-                if (fromServer.contains("\"")) { // all dictionaries have quotes for description
-                    String databaseName = fromServer.split(" ")[0];
-                    String databaseDescription = fromServer.split("\"")[1];
+                String[] parsedStrings = DictStringParser.splitAtoms(fromServer);
+
+                if (parsedStrings.length > 1) {
+                    String databaseName = parsedStrings[0];
+                    String databaseDescription = parsedStrings[1];
                     databaseMap.put(databaseName, new Database(databaseName, databaseDescription));
-                }
-                System.out.println("Server: " + fromServer);
-                if (fromServer.contains("250")) {
+                } else { // when . is encountered
                     break;
                 }
             }
+
+            handleStatus(Status.readStatus(input));
         } catch (Exception e) {
             throw new DictConnectionException(e);
         }
+
         return databaseMap.values();
     }
 
@@ -217,24 +216,89 @@ public class DictionaryConnection {
         Set<MatchingStrategy> set = new LinkedHashSet<>();
 
         output.println("show strat");
-        System.out.println("\nListing all strategies... \n");
-        String fromServer;
+
         try {
+            Status strategyStatus = Status.readStatus(input);
+            handleStatus(strategyStatus); // TODO no match status
+
+            String fromServer;
             while ((fromServer = input.readLine()) != null) {
-                if (fromServer.contains("\"")) { // all strategies have quotes for description
-                    String matchingStrategyName = fromServer.split(" ")[0];
-                    String matchingStrategyDescription = fromServer.split("\"")[1];
+                String[] parsedStrings = DictStringParser.splitAtoms(fromServer);
+
+                if (parsedStrings.length > 1) {
+                    String matchingStrategyName = parsedStrings[0];
+                    String matchingStrategyDescription = parsedStrings[1];
                     set.add(new MatchingStrategy(matchingStrategyName, matchingStrategyDescription));
-                }
-                System.out.println("Server: " + fromServer);
-                if (fromServer.contains("250")) {
+                } else { // when . is encountered
                     break;
                 }
             }
+
+            handleStatus(Status.readStatus(input));
         } catch (Exception e) {
             throw new DictConnectionException(e);
         }
 
         return set;
+    }
+
+    private String formatWord(String word) {
+        return word.contains(" ") ?
+                "\"" + word + "\"" :
+                word;
+    }
+
+    // TODO finish implementing
+    private void handleStatus(Status status) throws Exception {
+        System.out.println(status.getStatusCode() + " " + status.getDetails());
+        switch (status.getStatusType()) {
+            case 1:
+                break;
+            case 2:
+                switch (status.getStatusCode()) { // TODO use if statement if it's better
+                    case 220:
+                        break;
+                    case 250:
+                        break;
+                    default:
+                        throw new DictConnectionException("Invalid status code");
+                }
+                break;
+            case 3:
+                break;
+            case 4:
+                break;
+            case 5:
+                switch (status.getStatusCode()) {
+                    case 500:
+                        break;
+                    case 501:
+                        break;
+                    case 502:
+                        break;
+                    case 503:
+                        break;
+                    default:
+                        throw new DictConnectionException();
+                }
+                break;
+            default:
+                throw new DictConnectionException("Invalid status type");
+//            case 220:
+//                System.out.println(status.getDetails());
+//                break;
+//            case 550:
+//                break;
+//            case 551:
+//                break;
+//            case 552:
+//                break;
+//            case 152:
+//                break;
+//            case 250:
+//                break;
+//            default:
+//                throw new DictConnectionException();
+        }
     }
 }
