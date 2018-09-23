@@ -42,7 +42,8 @@ public class DictionaryConnection {
             output = new PrintWriter(socket.getOutputStream(), true);
 
             Status welcomeStatus = Status.readStatus(input);
-            handleStatus(welcomeStatus);
+            if (welcomeStatus.getStatusCode() != 220)
+                throw new DictConnectionException("Sorry try connecting again");
         } catch (Exception e) {
             throw new DictConnectionException(e);
         }
@@ -262,9 +263,11 @@ public class DictionaryConnection {
                 word;
     }
 
-    // TODO finish implementing
-
     /**
+     * Handles all the status replies from server using Switches.
+     *
+     * Only interesting behaviour have a case, all others default to return true,
+     *     to continue parsing server output.
      *
      * @param status
      * @return true if need to parse server response, false otherwise
@@ -272,50 +275,22 @@ public class DictionaryConnection {
      */
     private boolean handleStatus(Status status) throws Exception {
         System.out.println(status.getStatusCode() + " " + status.getDetails());
-        switch (status.getStatusType()) {
-            case 1:
-                break;
-            case 2:
-                switch (status.getStatusCode()) { // TODO use if statement if it's better
-                    case 220:
-                        break;
-                    case 250:
-                        break;
-                    default:
-                        throw new DictConnectionException("Invalid status code");
-                }
-                break;
-            case 3:
-                break;
-            case 4:
-                break;
-            case 5:
-                switch (status.getStatusCode()) {
-                    case 500:
-                        break;
-                    case 501:
-                        break;
-                    case 502:
-                        break;
-                    case 503:
-                        break;
-                    case 552:
-                    case 554:
-                    case 555:
-                        return false;
-                    default:
-                        throw new DictConnectionException();
-                }
-                break;
+
+        switch (status.getStatusCode()) {
+            case 550:
+                throw new DictConnectionException("Invalid database");
+            case 551:
+                throw new DictConnectionException("Invalid strategy");
+            case 552:
+            case 554:
+            case 555:
+                return false;
             default:
-                throw new DictConnectionException("Invalid status type");
-//            case 220:
-//            case 550:
-//            case 551:
-//            case 552:
-//            case 152:
-//            case 250:
+                if (status.isNegativeReply()) {
+                    throw new DictConnectionException();
+                }
+                break;
         }
-        return true;
+        return true; // Notable statuses 150, 151, 152, 220, 250
     }
 }
